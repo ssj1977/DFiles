@@ -89,6 +89,16 @@ BEGIN_MESSAGE_MAP(CDFilesDlg, CDialogEx)
 END_MESSAGE_MAP()
 
 // CDFilesDlg 메시지 처리기
+void CDFilesDlg::InitFont()
+{
+	CFont* pFont = GetFont();
+	LOGFONT lf;
+	pFont->GetLogFont(&lf);
+	lf.lfHeight = fontsize * 10;
+	m_font.DeleteObject();
+	m_font.CreatePointFontIndirect(&lf);
+}
+
 
 BOOL CDFilesDlg::OnInitDialog()
 {
@@ -122,8 +132,10 @@ BOOL CDFilesDlg::OnInitDialog()
 	InitToolBar();
 	InitINIPath();
 	INILoad(m_strINIPath);
+	InitFont();
+	m_tabPath.SetFont(&m_font);
+	m_editPath.SetFont(&m_font);
 	InitTabs();
-	UpdateFontSize();
 	m_editPath.EnableFolderBrowseButton();
 	// TODO: 여기에 추가 초기화 작업을 추가합니다.
 	if (!m_rcMain.IsRectEmpty())
@@ -468,6 +480,7 @@ BOOL CDFilesDlg::TabCreateList(int iTabIndex)
 		return FALSE;
 	}
 	pList->SetExtendedStyle(LVS_EX_FULLROWSELECT);
+	pList->SetFont(&m_font);
 	//pList->EnableShellContextMenu();
 	pList->SetSortColumn(ti.iSortColumn, ti.bSortAscend);
 	HIMAGELIST* imageList = NULL;
@@ -628,13 +641,6 @@ void CDFilesDlg::UpdateCurrentPathByString()
 
 void CDFilesDlg::UpdateFontSize()
 {
-	CFont* pFont = GetFont();
-	LOGFONT lf;
-	pFont->GetLogFont(&lf);
-	lf.lfHeight = fontsize * 10;
-	m_font.DeleteObject();
-	m_font.CreatePointFontIndirect(&lf);
-	
 	m_tabPath.SetFont(&m_font);
 	m_editPath.SetFont(&m_font);
 	for(int i = 0; i < m_aTabInfo.GetSize(); i++)

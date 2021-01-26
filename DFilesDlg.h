@@ -79,6 +79,7 @@ public:
 	CFileListCtrl* GetCurrentListCtrl();
 	int FindTabIndex(CFileListCtrl* pList);
 	void SetTabTitle(int nIndex, CString strTitle);
+	void InitFont();
 
 protected:
 	afx_msg LRESULT OnAfxWmChangeCurrentFolder(WPARAM wParam, LPARAM lParam);

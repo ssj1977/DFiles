@@ -8,6 +8,7 @@
 #include <shlwapi.h>
 #include <atlpath.h>
 #include <winnetwk.h>
+//#include <fileapi.h>
 
 /////////////////////////////////////////////////
 //颇老 酒捞能 贸府
@@ -58,7 +59,7 @@ IMPLEMENT_DYNAMIC(CFileListCtrl, CMFCListCtrl)
 
 CFileListCtrl::CFileListCtrl()
 {
-	m_pFont = NULL;
+	m_strFolder = L"";
 }
 
 CFileListCtrl::~CFileListCtrl()
@@ -154,10 +155,35 @@ void CFileListCtrl::InitColumns()
 CString EnumerateFunc(LPNETRESOURCE lpnr);
 CString DisplayStruct(int i, LPNETRESOURCE lpnrLocal);
 
+void CFileListCtrl::DisplayVolumes()
+{
+	DWORD drives = GetLogicalDrives();
+	DeleteAllItems();
+	InitColumns();
+	DWORD flag = 1;
+	int nItem = 0;
+	TCHAR c = L'A';
+	CString strTemp;
+	for (int i = 0; i < 32; i++)
+	{
+		if (drives & flag)
+		{
+			strTemp = (TCHAR)(c + i);
+			nItem = InsertItem(GetItemCount(), strTemp, GetFileImageIndexFromMap(L"", TRUE));
+		}
+		flag = flag * 2;
+	}
+
+}
+
 
 void CFileListCtrl::DisplayFolder(CString strFolder)
 {
-	if (strFolder.IsEmpty()) return;
+	if (strFolder.IsEmpty())
+	{
+		DisplayVolumes();
+		return;
+	}
 	CPath path = CPath(strFolder);
 	m_strFolder = (CString)path;
 	path.AddBackslash();
@@ -551,3 +577,55 @@ CString DisplayStruct(int i, LPNETRESOURCE lpnrLocal)
 	str += _T("\n");
 	return str;
 }
+/*
+0	SI_UNKNOWN	Unknown File Type
+1	SI_DEF_DOCUMENT	Default document
+2	SI_DEF_APPLICATION	Default application
+3	SI_FOLDER_CLOSED	Closed folder
+4	SI_FOLDER_OPEN	Open folder
+5	SI_FLOPPY_514	5 1/4 floppy
+6	SI_FLOPPY_35	3 1/2 floppy
+7	SI_REMOVABLE	Removable drive
+8	SI_HDD	Hard disk drive
+9	SI_NETWORKDRIVE	Network drive
+10	SI_NETWORKDRIVE_DISCONNECTED	network drive offline
+11	SI_CDROM	CD drive
+12	SI_RAMDISK	RAM disk
+13	SI_NETWORK	Entire network
+14		?
+15	SI_MYCOMPUTER	My Computer
+16	SI_PRINTMANAGER	Printer Manager
+17	SI_NETWORK_NEIGHBORHOOD	Network Neighborhood
+18	SI_NETWORK_WORKGROUP	Network Workgroup
+19	SI_STARTMENU_PROGRAMS	Start Menu Programs
+20	SI_STARTMENU_DOCUMENTS	Start Menu Documents
+21	SI_STARTMENU_SETTINGS	Start Menu Settings
+22	SI_STARTMENU_FIND	Start Menu Find
+23	SI_STARTMENU_HELP	Start Menu Help
+24	SI_STARTMENU_RUN	Start Menu Run
+25	SI_STARTMENU_SUSPEND	Start Menu Suspend
+26	SI_STARTMENU_DOCKING	Start Menu Docking
+27	SI_STARTMENU_SHUTDOWN	Start Menu Shutdown
+28	SI_SHARE	Sharing overlay (hand)
+29	SI_SHORTCUT	Shortcut overlay (small arrow)
+30	SI_PRINTER_DEFAULT	Default printer overlay (small tick)
+31	SI_RECYCLEBIN_EMPTY	Recycle bin empty
+32	SI_RECYCLEBIN_FULL	Recycle bin full
+33	SI_DUN	Dial-up Network Folder
+34	SI_DESKTOP	Desktop
+35	SI_CONTROLPANEL	Control Panel
+36	SI_PROGRAMGROUPS	Program Group
+37	SI_PRINTER	Printer
+38	SI_FONT	Font Folder
+39	SI_TASKBAR	Taskbar
+40	SI_AUDIO_CD	Audio CD
+41		?
+42		?
+43	SI_FAVORITES	IE favorites
+44	SI_LOGOFF	Start Menu Logoff
+45		?
+46		?
+47	SI_LOCK	Lock
+48	SI_HIBERNATE	Hibernate
+
+*/

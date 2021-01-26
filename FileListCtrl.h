@@ -17,9 +17,9 @@ public:
 	void OpenParentFolder();
 	void ResizeColumns();
 	void DisplayFolder(CString strFolder);
+	void DisplayVolumes();
 	void InitColumns();
 	CString GetCurrentFolder();
-	CFont* m_pFont;
 	CString m_strFolder;
 protected:
 	DECLARE_MESSAGE_MAP()
