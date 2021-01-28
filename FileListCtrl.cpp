@@ -7,8 +7,10 @@
 #include "DFilesDlg.h"
 #include <shlwapi.h>
 #include <atlpath.h>
-#include <winnetwk.h>
+#include <lm.h>
 //#include <fileapi.h>
+
+#pragma comment(lib, "Netapi32.lib")
 
 /////////////////////////////////////////////////
 //파일 아이콘 처리
@@ -16,6 +18,58 @@
 typedef map<CString, int> CExtMap; //확장자에 해당하는 이미지맵의 번호를 기억
 static int nFolderImage = -1;
 static CExtMap mapExt;
+
+//기본 이미지맵 번호
+#define SI_UNKNOWN 0 //Unknown File Type
+#define SI_DEF_DOCUMENT	1 //Default document
+#define SI_DEF_APPLICATION 2//Default application
+#define SI_FOLDER_CLOSED 3	//Closed folder
+#define SI_FOLDER_OPEN 4	//Open folder
+#define SI_FLOPPY_514 5	//5 1/4 floppy
+#define SI_FLOPPY_35 6	//3 1/2 floppy
+#define SI_REMOVABLE 7	//Removable drive
+#define SI_HDD 8	//Hard disk drive
+#define SI_NETWORKDRIVE 9	//Network drive
+#define SI_NETWORKDRIVE_DISCONNECTED 10 //network drive offline
+#define SI_CDROM 11	//CD drive
+#define SI_RAMDISK 12	//RAM disk
+#define SI_NETWORK 13	//Entire network
+#define SI_MOUSEGLOBE //14		?
+#define SI_MYCOMPUTER 15	//My Computer
+#define SI_PRINTMANAGER 16	//Printer Manager
+#define SI_NETWORK_NEIGHBORHOOD	17//Network Neighborhood
+#define SI_NETWORK_WORKGROUP 18	//Network Workgroup
+#define SI_STARTMENU_PROGRAMS 19	//Start Menu Programs
+#define SI_STARTMENU_DOCUMENTS 20	//Start Menu Documents
+#define SI_STARTMENU_SETTINGS 21	//Start Menu Settings
+#define SI_STARTMENU_FIND 22	//Start Menu Find
+#define SI_STARTMENU_HELP 23	//Start Menu Help
+#define SI_STARTMENU_RUN 24	//Start Menu Run
+#define SI_STARTMENU_SUSPEND 25	//Start Menu Suspend
+#define SI_STARTMENU_DOCKING 26	//Start Menu Docking
+#define SI_STARTMENU_SHUTDOWN 27	//Start Menu Shutdown
+#define SI_SHARE 28	//Sharing overlay (hand)
+#define SI_SHORTCUT 29	//Shortcut overlay (small arrow)
+#define SI_PRINTER_DEFAULT 30	//Default printer overlay (small tick)
+#define SI_RECYCLEBIN_EMPTY 31	//Recycle bin empty
+#define SI_RECYCLEBIN_FULL 32	//Recycle bin full
+#define SI_DUN 33	//Dial-up Network Folder
+#define SI_DESKTOP 34	//Desktop
+#define SI_CONTROLPANEL 35	//Control Panel
+#define SI_PROGRAMGROUPS 36	//Program Group
+#define SI_PRINTER 37	//Printer
+#define SI_FONT 38	//Font Folder
+#define SI_TASKBAR 39	//Taskbar
+#define SI_AUDIO_CD 40	//Audio CD
+#define SI_TREE 41		//?
+#define SI_PCFOLDER 42	//?
+#define SI_FAVORITES 43	//IE favorites
+#define SI_LOGOFF 44	//Start Menu Logoff
+#define SI_FOLDERUPLOAD 45		?
+#define SI_SCREENREFRESH 46		?
+#define SI_LOCK 47	//Lock
+#define SI_HIBERNATE 48	//Hibernate
+
 
 //해당 파일의 아이콘 정보를 가져온다
 CString Get_Ext(CString strFile, BOOL bIsDirectory)
@@ -169,7 +223,7 @@ void CFileListCtrl::DisplayVolumes()
 		if (drives & flag)
 		{
 			strTemp = (TCHAR)(c + i);
-			nItem = InsertItem(GetItemCount(), strTemp, GetFileImageIndexFromMap(L"", TRUE));
+			nItem = InsertItem(GetItemCount(), strTemp, SI_HDD ); //GetFileImageIndexFromMap(L"", TRUE)
 		}
 		flag = flag * 2;
 	}
@@ -186,51 +240,38 @@ void CFileListCtrl::DisplayFolder(CString strFolder)
 	}
 	CPath path = CPath(strFolder);
 	m_strFolder = (CString)path;
-	path.AddBackslash();
 	DeleteAllItems();
 	InitColumns();
-/*	if (path.IsUNC())
+	if (path.IsUNCServer())
 	{
-		NETRESOURCE nr;
-		//AfxMessageBox(EnumerateFunc(lpnr));
-		//return;
-		nr.dwDisplayType = RESOURCEDISPLAYTYPE_SHARE;
-		nr.dwScope = RESOURCE_GLOBALNET;
-		nr.dwType = RESOURCETYPE_DISK;
-		nr.dwUsage = RESOURCEUSAGE_CONTAINER;
-		nr.lpComment = NULL;
-		nr.lpLocalName = NULL;
-		nr.lpProvider = NULL;
-		nr.lpRemoteName = (LPTSTR)(LPCTSTR)path;
-		DWORD dwResult, dwResultEnum;
-		HANDLE hEnum;
-		DWORD cbBuffer = 16384;     // 16K is a good size
-		DWORD cEntries = -1;        // enumerate all possible entries
-		LPNETRESOURCE lpnrLocal;    // pointer to enumerated structures
-		DWORD i;
-		dwResult = WNetOpenEnum(RESOURCE_GLOBALNET, RESOURCETYPE_DISK, RESOURCEUSAGE_CONTAINER, &nr, &hEnum);    // handle to the resource
-		if (dwResult != NO_ERROR) return;
-		lpnrLocal = (LPNETRESOURCE)GlobalAlloc(GPTR, cbBuffer);
-		if (lpnrLocal == NULL) return;
-		do 
+		PSHARE_INFO_0 pBuffer, pTemp;
+		NET_API_STATUS res;
+		DWORD er = 0, tr = 0, resume = 0, i;
+		LPTSTR lpszServer = strFolder.GetBuffer();
+		do // begin do
 		{
-			ZeroMemory(lpnrLocal, cbBuffer);
-			dwResultEnum = WNetEnumResource(hEnum, &cEntries, lpnrLocal, &cbBuffer);
-			if (dwResultEnum == NO_ERROR) 
+			res = NetShareEnum(lpszServer, 0, (LPBYTE*)&pBuffer, MAX_PREFERRED_LENGTH, &er, &tr, &resume);
+			if (res == ERROR_SUCCESS || res == ERROR_MORE_DATA)
 			{
-				for (i = 0; i < cEntries; i++) 
+				pTemp = pBuffer;
+				for (i = 1; i <= er; i++)
 				{
-					CString strName = (LPCTSTR)lpnrLocal[i].lpRemoteName;
-					int nItem = InsertItem(GetItemCount(), strName, GetFileImageIndexFromMap(_T(""), TRUE));
-					SetItemData(nItem, ITEM_TYPE_DIRECTORY);
+					CString strTemp = pTemp->shi0_netname;
+					InsertItem(GetItemCount(), strTemp, SI_NETWORKDRIVE);
+					pTemp++;
 				}
+				NetApiBufferFree(pBuffer);
+			}
+			else
+			{
+				AfxMessageBox(L"Err");
 			}
 		}
-		while (dwResultEnum != ERROR_NO_MORE_ITEMS);
-		GlobalFree((HGLOBAL)lpnrLocal);
-		dwResult = WNetCloseEnum(hEnum);
+		while (res == ERROR_MORE_DATA);
+		strFolder.ReleaseBuffer();
 		return;
-	}*/
+	}
+	path.AddBackslash();
 	CFileFind find;
 	BOOL b = find.FindFile(path + _T("*.*"));
 	CString strName, strSize, strDate, strType;
@@ -390,242 +431,3 @@ void CFileListCtrl::Sort(int iColumn, BOOL bAscending, BOOL bAdd)
 	m_bAscending = bAscending;
 	SortItemsEx(CompareProc, (LPARAM)this);
 }
-
-CString EnumerateFunc(LPNETRESOURCE lpnr)
-{
-	DWORD dwResult, dwResultEnum;
-	HANDLE hEnum;
-	DWORD cbBuffer = 16384;     // 16K is a good size
-	DWORD cEntries = -1;        // enumerate all possible entries
-	LPNETRESOURCE lpnrLocal;    // pointer to enumerated structures
-	DWORD i;
-	CString strTemp;
-	//
-	// Call the WNetOpenEnum function to begin the enumeration.
-	//
-	dwResult = WNetOpenEnum(RESOURCE_GLOBALNET, // all network resources
-		RESOURCETYPE_ANY,   // all resources
-		0,  // enumerate all resources
-		lpnr,       // NULL first time the function is called
-		&hEnum);    // handle to the resource
-
-	if (dwResult != NO_ERROR) {
-		printf("WnetOpenEnum failed with error %d\n", dwResult);
-		return strTemp;
-	}
-	//
-	// Call the GlobalAlloc function to allocate resources.
-	//
-	lpnrLocal = (LPNETRESOURCE)GlobalAlloc(GPTR, cbBuffer);
-	if (lpnrLocal == NULL) {
-		printf("WnetOpenEnum failed with error %d\n", dwResult);
-		//      NetErrorHandler(hwnd, dwResult, (LPSTR)"WNetOpenEnum");
-		return strTemp;
-	}
-	do {
-		//
-		// Initialize the buffer.
-		//
-		ZeroMemory(lpnrLocal, cbBuffer);
-		//
-		// Call the WNetEnumResource function to continue
-		//  the enumeration.
-		//
-		dwResultEnum = WNetEnumResource(hEnum,  // resource handle
-			&cEntries,      // defined locally as -1
-			lpnrLocal,      // LPNETRESOURCE
-			&cbBuffer);     // buffer size
-//
-// If the call succeeds, loop through the structures.
-//
-		if (dwResultEnum == NO_ERROR) {
-			for (i = 0; i < cEntries; i++) {
-				// Call an application-defined function to
-				//  display the contents of the NETRESOURCE structures.
-				//
-				strTemp += DisplayStruct(i, &lpnrLocal[i]);
-
-				// If the NETRESOURCE structure represents a container resource, 
-				//  call the EnumerateFunc function recursively.
-
-				if (RESOURCEUSAGE_CONTAINER == (lpnrLocal[i].dwUsage
-					& RESOURCEUSAGE_CONTAINER))
-					//          if(!EnumerateFunc(hwnd, hdc, &lpnrLocal[i]))
-					if (!EnumerateFunc(&lpnrLocal[i]))
-						printf("EnumerateFunc returned FALSE\n");
-				//            TextOut(hdc, 10, 10, "EnumerateFunc returned FALSE.", 29);
-			}
-		}
-		// Process errors.
-		//
-		else if (dwResultEnum != ERROR_NO_MORE_ITEMS) {
-			printf("WNetEnumResource failed with error %d\n", dwResultEnum);
-
-			//      NetErrorHandler(hwnd, dwResultEnum, (LPSTR)"WNetEnumResource");
-			break;
-		}
-	}
-	//
-	// End do.
-	//
-	while (dwResultEnum != ERROR_NO_MORE_ITEMS);
-	//
-	// Call the GlobalFree function to free the memory.
-	//
-	GlobalFree((HGLOBAL)lpnrLocal);
-	//
-	// Call WNetCloseEnum to end the enumeration.
-	//
-	dwResult = WNetCloseEnum(hEnum);
-
-	if (dwResult != NO_ERROR) {
-		//
-		// Process errors.
-		//
-		printf("WNetCloseEnum failed with error %d\n", dwResult);
-		//    NetErrorHandler(hwnd, dwResult, (LPSTR)"WNetCloseEnum");
-		return strTemp;
-	}
-
-	return strTemp;
-}
-
-CString DisplayStruct(int i, LPNETRESOURCE lpnrLocal)
-{
-	CString str, strTemp; 
-	strTemp.Format(_T("NETRESOURCE[%d] Scope: "), i);
-	str += strTemp;
-	switch (lpnrLocal->dwScope) {
-	case (RESOURCE_CONNECTED):
-		str+=_T("connected\n");
-		break;
-	case (RESOURCE_GLOBALNET):
-		str += _T("all resources\n");
-		break;
-	case (RESOURCE_REMEMBERED):
-		str += _T("remembered\n");
-		break;
-	default:
-		strTemp.Format(_T("unknown scope %d\n"), lpnrLocal->dwScope);
-		str += strTemp;
-		break;
-	}
-
-	strTemp.Format(_T("NETRESOURCE[%d] Type: "), i);
-	str += strTemp;
-	switch (lpnrLocal->dwType) {
-	case (RESOURCETYPE_ANY):
-		str += _T("any\n");
-		break;
-	case (RESOURCETYPE_DISK):
-		str += _T("disk\n");
-		break;
-	case (RESOURCETYPE_PRINT):
-		str += _T("print\n");
-		break;
-	default:
-		strTemp.Format(_T("unknown type %d\n"), lpnrLocal->dwType);
-		str += strTemp;
-		break;
-	}
-
-	printf("NETRESOURCE[%d] DisplayType: ", i);
-	switch (lpnrLocal->dwDisplayType) {
-	case (RESOURCEDISPLAYTYPE_GENERIC):
-		str += _T("generic\n");
-		break;
-	case (RESOURCEDISPLAYTYPE_DOMAIN):
-		str += _T("domain\n");
-		break;
-	case (RESOURCEDISPLAYTYPE_SERVER):
-		str += _T("server\n");
-		break;
-	case (RESOURCEDISPLAYTYPE_SHARE):
-		str += _T("share\n");
-		break;
-	case (RESOURCEDISPLAYTYPE_FILE):
-		str += _T("file\n");
-		break;
-	case (RESOURCEDISPLAYTYPE_GROUP):
-		str += _T("group\n");
-		break;
-	case (RESOURCEDISPLAYTYPE_NETWORK):
-		str += _T("network\n");
-		break;
-	default:
-		strTemp.Format(_T("unknown display type %d\n"), lpnrLocal->dwDisplayType);
-		str += strTemp;
-		break;
-	}
-
-	strTemp.Format(_T("NETRESOURCE[%d] Usage: 0x%x = "), i, lpnrLocal->dwUsage);
-	str += strTemp;
-	if (lpnrLocal->dwUsage & RESOURCEUSAGE_CONNECTABLE)
-		str += _T("connectable ");
-	if (lpnrLocal->dwUsage & RESOURCEUSAGE_CONTAINER)
-		str += _T("container ");
-	str += _T("\n");
-
-	strTemp.Format(_T("NETRESOURCE[%d] Localname: %S\n"), i, lpnrLocal->lpLocalName);
-	str += strTemp;
-	strTemp.Format(_T("NETRESOURCE[%d] Remotename: %S\n"), i, lpnrLocal->lpRemoteName);
-	str += strTemp;
-	strTemp.Format(_T("NETRESOURCE[%d] Comment: %S\n"), i, lpnrLocal->lpComment);
-	str += strTemp;
-	strTemp.Format(_T("NETRESOURCE[%d] Provider: %S\n"), i, lpnrLocal->lpProvider);
-	str += strTemp;
-	str += _T("\n");
-	return str;
-}
-/*
-0	SI_UNKNOWN	Unknown File Type
-1	SI_DEF_DOCUMENT	Default document
-2	SI_DEF_APPLICATION	Default application
-3	SI_FOLDER_CLOSED	Closed folder
-4	SI_FOLDER_OPEN	Open folder
-5	SI_FLOPPY_514	5 1/4 floppy
-6	SI_FLOPPY_35	3 1/2 floppy
-7	SI_REMOVABLE	Removable drive
-8	SI_HDD	Hard disk drive
-9	SI_NETWORKDRIVE	Network drive
-10	SI_NETWORKDRIVE_DISCONNECTED	network drive offline
-11	SI_CDROM	CD drive
-12	SI_RAMDISK	RAM disk
-13	SI_NETWORK	Entire network
-14		?
-15	SI_MYCOMPUTER	My Computer
-16	SI_PRINTMANAGER	Printer Manager
-17	SI_NETWORK_NEIGHBORHOOD	Network Neighborhood
-18	SI_NETWORK_WORKGROUP	Network Workgroup
-19	SI_STARTMENU_PROGRAMS	Start Menu Programs
-20	SI_STARTMENU_DOCUMENTS	Start Menu Documents
-21	SI_STARTMENU_SETTINGS	Start Menu Settings
-22	SI_STARTMENU_FIND	Start Menu Find
-23	SI_STARTMENU_HELP	Start Menu Help
-24	SI_STARTMENU_RUN	Start Menu Run
-25	SI_STARTMENU_SUSPEND	Start Menu Suspend
-26	SI_STARTMENU_DOCKING	Start Menu Docking
-27	SI_STARTMENU_SHUTDOWN	Start Menu Shutdown
-28	SI_SHARE	Sharing overlay (hand)
-29	SI_SHORTCUT	Shortcut overlay (small arrow)
-30	SI_PRINTER_DEFAULT	Default printer overlay (small tick)
-31	SI_RECYCLEBIN_EMPTY	Recycle bin empty
-32	SI_RECYCLEBIN_FULL	Recycle bin full
-33	SI_DUN	Dial-up Network Folder
-34	SI_DESKTOP	Desktop
-35	SI_CONTROLPANEL	Control Panel
-36	SI_PROGRAMGROUPS	Program Group
-37	SI_PRINTER	Printer
-38	SI_FONT	Font Folder
-39	SI_TASKBAR	Taskbar
-40	SI_AUDIO_CD	Audio CD
-41		?
-42		?
-43	SI_FAVORITES	IE favorites
-44	SI_LOGOFF	Start Menu Logoff
-45		?
-46		?
-47	SI_LOCK	Lock
-48	SI_HIBERNATE	Hibernate
-
-*/
