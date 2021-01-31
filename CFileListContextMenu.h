@@ -21,6 +21,5 @@ private:
 	CStringArray* m_paPath;
 	IShellFolder* m_psfFolder;
 	LPITEMIDLIST* m_aPIDL;
-	BOOL m_bDeleteISF;
 };
 

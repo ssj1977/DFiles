@@ -37,12 +37,11 @@ CFileListContextMenu::CFileListContextMenu()
 	m_paPath = NULL;
 	m_psfFolder = NULL; // To use GetUIObjectOf() to get a menu
 	m_aPIDL = NULL;
-	m_bDeleteISF = FALSE;
 }
 
 CFileListContextMenu::~CFileListContextMenu()
 {
-	if (m_psfFolder && m_bDeleteISF) m_psfFolder->Release();
+	if (m_psfFolder) m_psfFolder->Release();
 	m_psfFolder = NULL;
 	FreePIDLArray(m_aPIDL);
 	m_aPIDL = NULL;
@@ -183,7 +182,7 @@ void CFileListContextMenu::SetPathArray(CStringArray& aPath)
 {
 	if (aPath.GetSize() == 0) return;
 	m_paPath = &aPath;
-	if (m_psfFolder && m_bDeleteISF) m_psfFolder->Release(); //(m_psfFolder && bDelete)
+	if (m_psfFolder) m_psfFolder->Release(); //(m_psfFolder && bDelete)
 	m_psfFolder = NULL;
 	HRESULT hr = S_OK;
 	LPITEMIDLIST pidl = NULL;
@@ -203,25 +202,27 @@ void CFileListContextMenu::SetPathArray(CStringArray& aPath)
 	FreePIDLArray(m_aPIDL);
 	int nCount = aPath.GetSize();
 	m_aPIDL = (LPITEMIDLIST*)CoTaskMemAlloc(nCount * sizeof(LPITEMIDLIST));
-	ZeroMemory(m_aPIDL, nCount * sizeof(LPITEMIDLIST));
-	for (int i = 0; i < nCount; i++)
+	if (m_aPIDL)
 	{
-		strTemp = aPath.GetAt(i);
-		hr = psfDesktop->ParseDisplayName(NULL, 0, strTemp.GetBuffer(0), NULL, &pidl, NULL);
-		strTemp.ReleaseBuffer();
-		if (SUCCEEDED(hr))
+		ZeroMemory(m_aPIDL, nCount * sizeof(LPITEMIDLIST));
+		for (int i = 0; i < nCount; i++)
 		{
-			// get relative pidl via SHBindToParent
-			SHBindToParent(pidl, IID_IShellFolder, (void**)&psfFolder, (LPCITEMIDLIST*)&pidl_temp);
-			if (pidl_temp)
+			strTemp = aPath.GetAt(i);
+			hr = psfDesktop->ParseDisplayName(NULL, 0, strTemp.GetBuffer(0), NULL, &pidl, NULL);
+			strTemp.ReleaseBuffer();
+			if (SUCCEEDED(hr))
 			{
-				m_aPIDL[i] = CopyPIDL(pidl_temp);
+				// get relative pidl via SHBindToParent
+				SHBindToParent(pidl, IID_IShellFolder, (void**)&psfFolder, (LPCITEMIDLIST*)&pidl_temp);
+				if (pidl_temp)
+				{
+					m_aPIDL[i] = CopyPIDL(pidl_temp);
+				}
+				psfFolder->Release();
 			}
-			psfFolder->Release();
 		}
 	}
 	psfDesktop->Release();
-	m_bDeleteISF = TRUE;
 }
 
 
