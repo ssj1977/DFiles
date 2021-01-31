@@ -20,7 +20,6 @@ public:
 	CRect m_rcMain;
 	CString m_strINIPath;
 	int m_nSelectedCount;
-	CString GetPathName(CString strPath);
 	void UpdateSortColumn(int iSortColumn, BOOL bSortAscend);
 	CArray<CTabInfo> m_aTabInfo;
 	int m_nCurrentTab;

@@ -183,6 +183,7 @@
     <Text Include="ReadMe.txt" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="CFileListContextMenu.h" />
     <ClInclude Include="DCommon.h" />
     <ClInclude Include="DFiles.h" />
     <ClInclude Include="DFilesDlg.h" />
@@ -194,6 +195,7 @@
     <ClInclude Include="targetver.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="CFileListContextMenu.cpp" />
     <ClCompile Include="DCommon.cpp" />
     <ClCompile Include="DFiles.cpp" />
     <ClCompile Include="DFilesDlg.cpp" />

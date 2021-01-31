@@ -52,6 +52,7 @@ BEGIN_MESSAGE_MAP(CAboutDlg, CDialogEx)
 //	ON_WM_SIZE()
 END_MESSAGE_MAP()
 
+CString GetPathName(CString strPath);
 
 // CDFilesDlg 대화 상자
 
@@ -231,21 +232,6 @@ void CDFilesDlg::OnSize(UINT nType, int cx, int cy)
 	ResizeDlgItems();
 }
 
-CString CDFilesDlg::GetPathName(CString strPath)
-{	
-	CString strReturn;
-	SHFILEINFO sfi = { 0 };
-	LPITEMIDLIST pidl = NULL;
-	if (strPath.IsEmpty()) SHGetFolderLocation(NULL, CSIDL_DRIVES, NULL, 0, &pidl);
-	else pidl = ILCreateFromPath(strPath);
-
-	if (SHGetFileInfo((LPCTSTR)pidl, -1, &sfi, sizeof(sfi), SHGFI_PIDL | SHGFI_DISPLAYNAME))
-	{
-		strReturn = sfi.szDisplayName;
-	}
-	ILFree(pidl);
-	return strReturn;
-}
 
 void CDFilesDlg::InitTabs()
 {
@@ -549,7 +535,7 @@ BOOL CDFilesDlg::OnCommand(WPARAM wParam, LPARAM lParam)
 	switch (wParam)
 	{
 	case IDM_OPENFILE:
-		if (GetCurrentListCtrl()) GetCurrentListCtrl()->OpenSelectedFile();
+		if (GetCurrentListCtrl()) GetCurrentListCtrl()->OpenSelectedItem();
 		break;
 	case IDM_OPENPARENT:
 		if (GetCurrentListCtrl()) GetCurrentListCtrl()->OpenParentFolder();

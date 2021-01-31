@@ -8,7 +8,7 @@
 #include <shlwapi.h>
 #include <atlpath.h>
 #include <lm.h>
-//#include <fileapi.h>
+#include "CFileListContextMenu.h"
 
 #pragma comment(lib, "Netapi32.lib")
 
@@ -16,7 +16,6 @@
 //파일 아이콘 처리
 #include <map>
 typedef map<CString, int> CExtMap; //확장자에 해당하는 이미지맵의 번호를 기억
-static int nFolderImage = -1;
 static CExtMap mapExt;
 
 //기본 이미지맵 번호
@@ -91,8 +90,8 @@ int GetFileImageIndexFromMap(CString strPath, BOOL bIsDirectory)
 {
 	if (bIsDirectory)
 	{
-		if (nFolderImage == -1) nFolderImage = GetFileImageIndex(_T(""));
-		return nFolderImage;
+		return GetFileImageIndex(_T(""));
+		//return SI_FOLDER_OPEN;
 	}
 	CString strExt = Get_Ext(strPath, bIsDirectory);
 	CExtMap::iterator it = mapExt.find(strExt);
@@ -106,14 +105,52 @@ int GetFileImageIndexFromMap(CString strPath, BOOL bIsDirectory)
 }
 /////////////////////////////////////////////////
 
+CString GetPathName(CString strPath)
+{
+	CString strReturn;
+	SHFILEINFO sfi = { 0 };
+	LPITEMIDLIST pidl = NULL;
+	if (strPath.IsEmpty()) SHGetFolderLocation(NULL, CSIDL_DRIVES, NULL, 0, &pidl);
+	else pidl = ILCreateFromPath(strPath);
+
+	if (SHGetFileInfo((LPCTSTR)pidl, -1, &sfi, sizeof(sfi), SHGFI_PIDL | SHGFI_DISPLAYNAME))
+	{
+		strReturn = sfi.szDisplayName;
+	}
+	ILFree(pidl);
+	return strReturn;
+}
+
 
 // CFileListCtrl
 
 IMPLEMENT_DYNAMIC(CFileListCtrl, CMFCListCtrl)
 
+#define COL_NAME 0
+#define COL_DATE 1
+#define COL_ALIAS 1
+#define COL_SIZE 2
+#define COL_FREESPACE 2
+#define COL_TOTALSPACE 3
+
+#define ITEM_TYPE_DOTS 0
+#define ITEM_TYPE_DIRECTORY 1
+#define ITEM_TYPE_FILE 2
+#define ITEM_TYPE_DRIVE 3
+#define ITEM_TYPE_UNC 4
+
+#define LIST_TYPE_DRIVE 0
+#define LIST_TYPE_FOLDER 1
+#define LIST_TYPE_UNCSERVER 2
+
+#define COL_COMP_STR 0
+#define COL_COMP_PATH 1
+#define COL_COMP_SIZE 2
+
 CFileListCtrl::CFileListCtrl()
 {
 	m_strFolder = L"";
+	m_nType = LIST_TYPE_DRIVE;
 }
 
 CFileListCtrl::~CFileListCtrl()
@@ -127,6 +164,9 @@ BEGIN_MESSAGE_MAP(CFileListCtrl, CMFCListCtrl)
 	ON_NOTIFY(HDN_ITEMCLICKW, 0, &CFileListCtrl::OnHdnItemclick)
 	ON_WM_DROPFILES()
 	ON_NOTIFY_REFLECT(LVN_BEGINDRAG, &CFileListCtrl::OnLvnBegindrag)
+	ON_NOTIFY_REFLECT(NM_DBLCLK, &CFileListCtrl::OnNMDblclk)
+	ON_NOTIFY_REFLECT(NM_RCLICK, &CFileListCtrl::OnNMRClick)
+	ON_NOTIFY_REFLECT(NM_RETURN, &CFileListCtrl::OnNMReturn)
 END_MESSAGE_MAP()
 
 CString CFileListCtrl::GetCurrentFolder()
@@ -134,41 +174,80 @@ CString CFileListCtrl::GetCurrentFolder()
 	return m_strFolder;
 }
 
-void CFileListCtrl::OpenSelectedFile()
+void CFileListCtrl::InitColumns(int nType)
 {
-	NMITEMACTIVATE nmia;
-	nmia.hdr.code = NM_DBLCLK;
-	nmia.hdr.hwndFrom = this->m_hWnd;
-	nmia.hdr.idFrom = IDC_LIST_FILE;
-	nmia.iItem = GetNextItem(-1, LVNI_SELECTED);
-	nmia.iSubItem = 0;
-	nmia.lParam = 0;
-	nmia.ptAction = CPoint(0,0);
-	nmia.uChanged = 0;
-	nmia.uKeyFlags = 0;
-	nmia.uNewState = 0;
-	nmia.uOldState = 0;
-	SendMessage(WM_NOTIFY, (WPARAM)IDC_LIST_FILE, (LPARAM)&nmia);
+	int nCount = GetHeaderCtrl().GetItemCount();
+	for (int i = nCount - 1; i >= 0; i--)
+		DeleteColumn(i);
+	if (nType == LIST_TYPE_DRIVE)
+	{
+		InsertColumn(COL_NAME, _T("Drive"), LVCFMT_LEFT, 150);
+		InsertColumn(COL_ALIAS, _T("Description"), LVCFMT_LEFT, 300);
+		InsertColumn(COL_FREESPACE, _T("Free"), LVCFMT_LEFT, 150);
+		InsertColumn(COL_TOTALSPACE, _T("Total"), LVCFMT_LEFT, 150);
+	}
+	else if (nType == LIST_TYPE_FOLDER)
+	{
+		InsertColumn(COL_NAME, _T("Name"), LVCFMT_LEFT, 300);
+		InsertColumn(COL_DATE, _T("Date"), LVCFMT_RIGHT, 200);
+		InsertColumn(COL_SIZE, _T("Size"), LVCFMT_RIGHT, 150);
+	}
+	else if (nType == LIST_TYPE_UNCSERVER)
+	{
+		InsertColumn(COL_NAME, _T("Folder"), LVCFMT_LEFT, 300);
+	}
+	m_nType = nType;
+}
+
+CString CFileListCtrl::GetItemFullPath(int nIndex)
+{
+	CPath path = CPath(m_strFolder);
+	path.AddBackslash();
+	path.Append(GetItemText(nIndex, COL_NAME));
+	return CString(path);
+}
+
+void CFileListCtrl::OpenSelectedItem()
+{
+	int nIndex = GetNextItem(-1, LVNI_SELECTED);
+	if (nIndex == -1) return;
+
+	int nType = GetItemData(nIndex);
+	if (nType == ITEM_TYPE_FILE)
+	{
+		return;
+	}
+	else
+	{
+		DisplayFolder(GetItemFullPath(nIndex));
+	}
 }
 
 void CFileListCtrl::OpenParentFolder()
 {
 	if (m_strFolder.IsEmpty()) return;
 	CPath path = CPath(m_strFolder);
-	if (path.IsRoot())
+	if (path.IsUNCServer())
 	{
 		return;
 	}
-	CString strParent = m_strFolder;
-	int nPos = strParent.ReverseFind(_T('\\'));
-	if (nPos = strParent.GetLength() - 1)
+	else if (path.IsRoot())
 	{
-		strParent = strParent.Left(nPos);
-		nPos = strParent.ReverseFind(_T('\\'));
+		DisplayFolder(_T(""));
 	}
-	if (nPos <= 0) return;
-	strParent = strParent.Left(nPos);
-	DisplayFolder(strParent);
+	else
+	{
+		CString strParent = m_strFolder;
+		int nPos = strParent.ReverseFind(_T('\\'));
+		if (nPos = strParent.GetLength() - 1)
+		{
+			strParent = strParent.Left(nPos);
+			nPos = strParent.ReverseFind(_T('\\'));
+		}
+		if (nPos <= 0) return;
+		strParent = strParent.Left(nPos);
+		DisplayFolder(strParent);
+	}
 }
 
 void CFileListCtrl::ResizeColumns()
@@ -188,67 +267,115 @@ void CFileListCtrl::ResizeColumns()
 	}*/
 }
 
-#define COL_NAME 0
-#define COL_DATE 1
-#define COL_SIZE 2
-
-void CFileListCtrl::InitColumns()
+CString GetFileSizeString(ULONGLONG nSize)
 {
-	int nCount = GetHeaderCtrl().GetItemCount();
-	for (int i = nCount -1 ; i >= 0; i--)
-		DeleteColumn(i);
-	InsertColumn(COL_NAME, _T("Name"), LVCFMT_LEFT, 300);
-	InsertColumn(COL_DATE, _T("Date"), LVCFMT_RIGHT, 200);
-	InsertColumn(COL_SIZE, _T("Size"), LVCFMT_RIGHT, 150);
-}
-
-#define ITEM_TYPE_DOTS 0
-#define ITEM_TYPE_DIRECTORY 1
-#define ITEM_TYPE_FILE 2
-
-CString EnumerateFunc(LPNETRESOURCE lpnr);
-CString DisplayStruct(int i, LPNETRESOURCE lpnrLocal);
-
-void CFileListCtrl::DisplayVolumes()
-{
-	DWORD drives = GetLogicalDrives();
-	DeleteAllItems();
-	InitColumns();
-	DWORD flag = 1;
-	int nItem = 0;
-	TCHAR c = L'A';
-	CString strTemp;
-	for (int i = 0; i < 32; i++)
+	TCHAR pBuf[100];
+	ZeroMemory(pBuf, 100);
+	CString strSize; 
+	strSize.Format(_T("%I64u"), nSize);
+	int nLen = strSize.GetLength();
+	int nPos = 0;
+	for (int i = 0; i < nLen; i++)
 	{
-		if (drives & flag)
+		pBuf[nPos] = strSize.GetAt(i);
+		nPos += 1;
+		if (i < nLen - 3 && (nLen - i -1) % 3 == 0)
 		{
-			strTemp = (TCHAR)(c + i);
-			nItem = InsertItem(GetItemCount(), strTemp, SI_HDD ); //GetFileImageIndexFromMap(L"", TRUE)
+			pBuf[nPos] = _T(',');
+			nPos += 1;
 		}
-		flag = flag * 2;
 	}
-
+	return pBuf;
 }
 
+CString GetDriveSizeString(ULARGE_INTEGER size)
+{
+	CString str;
+	ULONGLONG nSize = size.QuadPart;
+	if (nSize > 1073741824)  // 2^30 = GB
+	{
+		nSize = nSize / 1073741824;
+		str.Format(_T("%I64uGB"), nSize);
+	}
+	else if (nSize > 1048576) // 2^20 = MB
+	{
+		nSize = nSize / 1048576;
+		str.Format(_T("%I64uMB"), nSize);
+	}
+	else if (nSize > 1024) // 2^10 = KB
+	{
+		nSize = nSize / 1024;
+		str.Format(_T("%I64uKB"), nSize);
+	}
+	else
+	{
+		str.Format(_T("%I64uB"), nSize);
+	}
+	return str;
+}
+
+ULONGLONG Str2Size(CString str)
+{
+	str.Remove(_T(','));
+	ULONGLONG size = _wcstoui64(str, NULL, 10);
+	if (str.GetLength() > 2)
+	{
+		CString strUnit = str.Right(2);
+		if (strUnit == _T("GB")) size = size * 1073741824;
+		else if (strUnit == _T("MB")) size = size * 1048576;
+		else if (strUnit == _T("KB")) size = size * 1024;
+	}
+	return size;
+}
 
 void CFileListCtrl::DisplayFolder(CString strFolder)
 {
+	CPath path = CPath(strFolder);
+	DeleteAllItems();
 	if (strFolder.IsEmpty())
 	{
-		DisplayVolumes();
-		return;
+		InitColumns(LIST_TYPE_DRIVE);
+		DWORD drives = GetLogicalDrives();
+		DWORD flag = 1;
+		int nItem = 0, nImage = 0;
+		UINT nType = 0;
+		TCHAR c = _T('A');
+		CString strDrive;
+		ULARGE_INTEGER space_free, space_total;
+
+		for (int i = 0; i < 32; i++)
+		{
+			if (drives & flag)
+			{
+				strDrive = (TCHAR)(c + i);
+				strDrive += _T(":\\");
+				nType = GetDriveType(strDrive);
+				if (nType == DRIVE_REMOVABLE) nImage = SI_REMOVABLE;
+				else if (nType == DRIVE_CDROM) nImage = SI_CDROM;
+				else if (nType == DRIVE_RAMDISK) nImage = SI_RAMDISK;
+				else if (nType == DRIVE_REMOTE) nImage = SI_NETWORKDRIVE;
+				else nImage = SI_HDD;
+				nItem = InsertItem(GetItemCount(), strDrive, nImage); //GetFileImageIndexFromMap(L"", TRUE)
+				SetItemText(nItem, COL_ALIAS, GetPathName(strDrive));
+				if (GetDiskFreeSpaceEx(strDrive, NULL, &space_total, &space_free))
+				{
+					SetItemText(nItem, COL_FREESPACE, GetDriveSizeString(space_free));
+					SetItemText(nItem, COL_TOTALSPACE, GetDriveSizeString(space_total));
+				}
+				SetItemData(nItem, ITEM_TYPE_DRIVE);
+			}
+			flag = flag * 2;
+		}
 	}
-	CPath path = CPath(strFolder);
-	m_strFolder = (CString)path;
-	DeleteAllItems();
-	InitColumns();
-	if (path.IsUNCServer())
+	else if (path.IsUNCServer())
 	{
+		InitColumns(LIST_TYPE_UNCSERVER);
 		PSHARE_INFO_0 pBuffer, pTemp;
 		NET_API_STATUS res;
 		DWORD er = 0, tr = 0, resume = 0, i;
 		LPTSTR lpszServer = strFolder.GetBuffer();
-		do // begin do
+		int nItem = 0;
+		do
 		{
 			res = NetShareEnum(lpszServer, 0, (LPBYTE*)&pBuffer, MAX_PREFERRED_LENGTH, &er, &tr, &resume);
 			if (res == ERROR_SUCCESS || res == ERROR_MORE_DATA)
@@ -257,58 +384,63 @@ void CFileListCtrl::DisplayFolder(CString strFolder)
 				for (i = 1; i <= er; i++)
 				{
 					CString strTemp = pTemp->shi0_netname;
-					InsertItem(GetItemCount(), strTemp, SI_NETWORKDRIVE);
+					if (strTemp != "IPC$")
+					{
+						nItem = InsertItem(GetItemCount(), strTemp, SI_NETWORKDRIVE);
+						SetItemData(nItem, ITEM_TYPE_UNC);
+					}
 					pTemp++;
 				}
 				NetApiBufferFree(pBuffer);
 			}
-			else
-			{
-				AfxMessageBox(L"Err");
-			}
 		}
 		while (res == ERROR_MORE_DATA);
 		strFolder.ReleaseBuffer();
-		return;
 	}
-	path.AddBackslash();
-	CFileFind find;
-	BOOL b = find.FindFile(path + _T("*.*"));
-	CString strName, strSize, strDate, strType;
-	DWORD itemData = 0;
-	int nItem;
-	while (b)
+	else
 	{
-		b = find.FindNextFileW();
-		strName = find.GetFileName();
-		CTime tTemp;
-		find.GetLastWriteTime(tTemp);
-		strDate = tTemp.Format(_T("%Y-%m-%d %H:%M:%S"));
-		if (find.IsDots())
+		InitColumns(LIST_TYPE_FOLDER);
+		path.AddBackslash();
+		CFileFind find;
+		BOOL b = find.FindFile(path + _T("*.*"));
+		CString strName, strSize, strDate, strType;
+		DWORD itemData = 0;
+		int nItem;
+		while (b)
 		{
-			itemData = ITEM_TYPE_DOTS; //Dots
-			strSize.Empty();
+			b = find.FindNextFileW();
+			strName = find.GetFileName();
+			CTime tTemp;
+			find.GetLastWriteTime(tTemp);
+			strDate = tTemp.Format(_T("%Y-%m-%d %H:%M:%S"));
+			if (find.IsDots())
+			{
+				itemData = ITEM_TYPE_DOTS; //Dots
+				strSize.Empty();
+			}
+			else if (find.IsDirectory())
+			{
+				itemData = ITEM_TYPE_DIRECTORY;  //Directory
+				strSize.Empty();
+			}
+			else
+			{
+				itemData = ITEM_TYPE_FILE;  //File
+				//strSize.Format(_T("%I64u"), find.GetLength());
+				strSize = GetFileSizeString(find.GetLength());
+			}
+			if (itemData != ITEM_TYPE_DOTS)
+			{
+				nItem = InsertItem(GetItemCount(), strName, GetFileImageIndexFromMap(find.GetFilePath(), find.IsDirectory()));
+				SetItemData(nItem, itemData);
+				SetItemText(nItem, COL_DATE, strDate);
+				if (!strSize.IsEmpty()) SetItemText(nItem, COL_SIZE, strSize);
+			}
 		}
-		else if (find.IsDirectory())
-		{ 
-			itemData = ITEM_TYPE_DIRECTORY;  //Directory
-			strSize.Empty();
-		}
-		else
-		{
-			itemData = ITEM_TYPE_FILE;  //File
-			strSize.Format(_T("%I64u"), find.GetLength());
-		}
-		if (itemData != ITEM_TYPE_DOTS)
-		{
-			nItem = InsertItem(GetItemCount(), strName, GetFileImageIndexFromMap(find.GetFilePath(), find.IsDirectory()));
-			SetItemData(nItem, itemData);
-			SetItemText(nItem, COL_DATE, strDate);
-			if (!strSize.IsEmpty()) SetItemText(nItem, COL_SIZE, strSize);
-		}
+		Sort(GetHeaderCtrl().GetSortColumn(), GetHeaderCtrl().IsAscending());
 	}
+	m_strFolder = (CString)path;
 	GetParent()->SendMessage(WM_COMMAND, IDM_UPDATE_TABCTRL, (DWORD_PTR)this);
-	Sort(GetHeaderCtrl().GetSortColumn(), GetHeaderCtrl().IsAscending());
 }
 
 void CFileListCtrl::OnSize(UINT nType, int cx, int cy)
@@ -380,41 +512,63 @@ void CFileListCtrl::OnLvnBegindrag(NMHDR* pNMHDR, LRESULT* pResult)
 	*pResult = 0;
 }
 
-
-int CFileListCtrl::OnCompareItems(LPARAM lParam1, LPARAM lParam2, int iColumn)
+int CFileListCtrl::CompareItemByType(LPARAM item1, LPARAM item2, int nCol, int nType)
 {
-//	if (iColumn == 1)//assuming SetItemData was called earlier
-//		return lParam1 - lParam2;
 	int nRet = 0;
-	DWORD type1, type2;
-	ULONGLONG size1, size2;
-	CString str1, str2;
-
-	switch (iColumn)
+	CString str1 = GetItemText(item1, nCol);
+	CString str2 = GetItemText(item2, nCol);
+	if (nType == COL_COMP_STR)
 	{
-	case COL_NAME: //by Name
-		type1 = GetItemData(lParam1);
-		type2 = GetItemData(lParam2);
+		nRet = StrCmp(str1, str2);
+	}
+	else if (nType == COL_COMP_PATH)
+	{
+		DWORD type1, type2;
+		type1 = GetItemData(item1);
+		type2 = GetItemData(item2);
 		if (type1 != type2)
 		{
 			nRet = type1 - type2;
-			break;
 		}
-	case COL_DATE: //by Date
-		str1 = GetItemText(lParam1, iColumn);
-		str2 = GetItemText(lParam2, iColumn);
-		nRet = StrCmpLogicalW(str1.GetBuffer(), str2.GetBuffer());
-		str1.ReleaseBuffer();
-		str2.ReleaseBuffer();
-		break;
-	case COL_SIZE: //by Size
-		size1 = _wcstoui64(GetItemText(lParam1, iColumn), NULL, 10);
-		size2 = _wcstoui64(GetItemText(lParam2, iColumn), NULL, 10);
+		else
+		{
+			nRet = StrCmpLogicalW(str1.GetBuffer(), str2.GetBuffer());
+			str1.ReleaseBuffer();
+			str2.ReleaseBuffer();
+		}
+	}
+	else if (nType == COL_COMP_SIZE)
+	{
+		ULONGLONG size1 = Str2Size(str1);
+		ULONGLONG size2 = Str2Size(str2);
 		if (size1 == size2) nRet = 0;
 		else if (size1 > size2) nRet = -1;
 		else if (size1 < size2) nRet = 1;
-		break;
 	}
+	return nRet;
+}
+
+int CFileListCtrl::OnCompareItems(LPARAM lParam1, LPARAM lParam2, int iColumn)
+{
+	int nRet = 0;
+	if (m_nType == LIST_TYPE_FOLDER)
+	{
+		if (iColumn == COL_NAME) nRet = CompareItemByType(lParam1, lParam2, iColumn, COL_COMP_PATH);
+		else if (iColumn == COL_DATE) nRet = CompareItemByType(lParam1, lParam2, iColumn, COL_COMP_STR);
+		else if (iColumn == COL_SIZE) nRet = CompareItemByType(lParam1, lParam2, iColumn, COL_COMP_SIZE);
+	}
+	else if( m_nType == LIST_TYPE_DRIVE)
+	{
+		if (iColumn == COL_NAME) nRet = CompareItemByType(lParam1, lParam2, iColumn, COL_COMP_STR);
+		else if (iColumn == COL_ALIAS) nRet = CompareItemByType(lParam1, lParam2, iColumn, COL_COMP_STR);
+		else if (iColumn == COL_FREESPACE) nRet = CompareItemByType(lParam1, lParam2, iColumn, COL_COMP_SIZE);
+		else if (iColumn == COL_TOTALSPACE) nRet = CompareItemByType(lParam1, lParam2, iColumn, COL_COMP_SIZE);
+	}
+	else if (m_nType == LIST_TYPE_UNCSERVER)
+	{
+		if (iColumn == COL_NAME) nRet = CompareItemByType(lParam1, lParam2, iColumn, COL_COMP_STR);
+	}
+
 	return nRet;
 }
 
@@ -431,3 +585,50 @@ void CFileListCtrl::Sort(int iColumn, BOOL bAscending, BOOL bAdd)
 	m_bAscending = bAscending;
 	SortItemsEx(CompareProc, (LPARAM)this);
 }
+
+
+void CFileListCtrl::OnNMDblclk(NMHDR* pNMHDR, LRESULT* pResult)
+{
+	LPNMITEMACTIVATE pNMItemActivate = reinterpret_cast<LPNMITEMACTIVATE>(pNMHDR);
+	OpenSelectedItem();
+	*pResult = 0;
+}
+
+void CFileListCtrl::OnNMReturn(NMHDR* pNMHDR, LRESULT* pResult)
+{
+	OpenSelectedItem();
+	*pResult = 0;
+}
+
+void CFileListCtrl::OnNMRClick(NMHDR* pNMHDR, LRESULT* pResult)
+{
+	LPNMITEMACTIVATE pNMItemActivate = reinterpret_cast<LPNMITEMACTIVATE>(pNMHDR);
+	
+	CPoint pt(pNMItemActivate->ptAction);
+	ClientToScreen(&pt);
+	ShowContextMenu(pt);
+	*pResult = 0;
+}
+
+void CFileListCtrl::ShowContextMenu(CPoint pt)
+{
+	int nIndex = GetNextItem(-1, LVNI_SELECTED);
+
+	CStringArray aSelectedPath;
+
+	while (nIndex != -1)
+	{
+		aSelectedPath.Add(GetItemFullPath(nIndex));
+		nIndex = GetNextItem(nIndex, LVNI_SELECTED);
+	}
+	if (aSelectedPath.GetSize() == 0)
+	{
+		aSelectedPath.Add(m_strFolder);
+	}
+	CFileListContextMenu context_menu;
+	context_menu.SetPathArray(aSelectedPath);
+	UINT idCommand = context_menu.ShowContextMenu(this, pt);
+	if (idCommand) GetParent()->SendMessage(WM_COMMAND, idCommand, 0);
+}
+
+
