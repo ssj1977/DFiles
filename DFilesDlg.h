@@ -26,8 +26,9 @@ public:
 	BOOL m_bEnable_UpdateCurrentPathByClick;
 	CToolBar m_tool;
 	void UpdateBottomBar();
-	int fontsize;
-	int iconsize;
+	int m_fontsize;
+	int m_iconsize;
+	HIMAGELIST* m_pSysImgList;
 	CFont m_font;
 // 대화 상자 데이터입니다.
 #ifdef AFX_DESIGN_TIME

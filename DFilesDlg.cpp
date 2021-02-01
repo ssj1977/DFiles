@@ -66,8 +66,9 @@ CDFilesDlg::CDFilesDlg(CWnd* pParent /*=NULL*/)
 	m_rcMain = CRect(0, 0, 0, 0);
 	m_bEnable_UpdateCurrentPathByClick = FALSE;
 	m_nSelectedCount = 0;
-	fontsize = 12;
-	iconsize = SHIL_EXTRALARGE;
+	m_fontsize = 12;
+	m_pSysImgList = NULL;
+	m_iconsize = SHIL_EXTRALARGE;
 }
 
 void CDFilesDlg::DoDataExchange(CDataExchange* pDX)
@@ -95,7 +96,7 @@ void CDFilesDlg::InitFont()
 	CFont* pFont = GetFont();
 	LOGFONT lf;
 	pFont->GetLogFont(&lf);
-	lf.lfHeight = fontsize * 10;
+	lf.lfHeight = m_fontsize * 10;
 	m_font.DeleteObject();
 	m_font.CreatePointFontIndirect(&lf);
 }
@@ -129,9 +130,9 @@ BOOL CDFilesDlg::OnInitDialog()
 	//  프레임워크가 이 작업을 자동으로 수행합니다.
 	SetIcon(m_hIcon, TRUE);			// 큰 아이콘을 설정합니다.
 	SetIcon(m_hIcon, FALSE);		// 작은 아이콘을 설정합니다.
-
 	InitToolBar();
 	InitINIPath();
+	UpdateIconSize();
 	INILoad(m_strINIPath);
 	InitFont();
 	m_tabPath.SetFont(&m_font);
@@ -251,7 +252,7 @@ void CDFilesDlg::InitTabs()
 
 void CDFilesDlg::ResizeDlgItems()
 {
-	int SU = fontsize * 2;
+	int SU = m_fontsize * 2;
 	if (::IsWindow(m_tabPath.GetSafeHwnd()) && GetCurrentListCtrl()!=NULL)
 	{
 		CRect rc, rcWnd;
@@ -301,8 +302,8 @@ void CDFilesDlg::INISave(CString strFile)
 	strLine.Format(_T("MainRectRight=%d\r\n"), m_rcMain.right);	strData += strLine;
 	strLine.Format(_T("MainRectBottom=%d\r\n"), m_rcMain.bottom);	strData += strLine;
 	strLine.Format(_T("CurrentTab=%d\r\n"), m_nCurrentTab);	strData += strLine;
-	strLine.Format(_T("FontSize=%d\r\n"), fontsize);	strData += strLine;
-	strLine.Format(_T("IconSize=%d\r\n"), iconsize);	strData += strLine;
+	strLine.Format(_T("FontSize=%d\r\n"), m_fontsize);	strData += strLine;
+	strLine.Format(_T("IconSize=%d\r\n"), m_iconsize);	strData += strLine;
 
 	for (int i = 0; i < m_aTabInfo.GetSize(); i++)
 	{
@@ -330,8 +331,8 @@ void CDFilesDlg::INILoad(CString strFile)
 		else if (str1.CompareNoCase(_T("MainRectRight")) == 0) m_rcMain.right = _ttoi(str2);
 		else if (str1.CompareNoCase(_T("MainRectBottom")) == 0) m_rcMain.bottom = _ttoi(str2);
 		else if (str1.CompareNoCase(_T("CurrentTab")) == 0) m_nCurrentTab = _ttoi(str2);
-		else if (str1.CompareNoCase(_T("FontSize")) == 0) fontsize = _ttoi(str2);
-		else if (str1.CompareNoCase(_T("IconSize")) == 0) iconsize = _ttoi(str2);
+		else if (str1.CompareNoCase(_T("FontSize")) == 0) m_fontsize = _ttoi(str2);
+		else if (str1.CompareNoCase(_T("IconSize")) == 0) m_iconsize = _ttoi(str2);
 		else if (str1.CompareNoCase(_T("Tab_Path")) == 0)
 		{
 			CTabInfo tabInfo(str2, 0, TRUE);
@@ -456,31 +457,22 @@ BOOL CDFilesDlg::TabCreateList(int iTabIndex)
 	CFileListCtrl* pList = new CFileListCtrl;
 	CRect rc, rcWnd;
 	GetClientRect(rcWnd);
-	int SU = fontsize * 2;
+	int SU = m_fontsize * 2;
 	rc = CRect(rcWnd.left + 2, rcWnd.top + SU * 2 + 11, rcWnd.right - BTNW + 2, rcWnd.bottom- SU);
 	m_bEnable_UpdateCurrentPathByClick = FALSE;
-	if (pList->Create(WS_CHILD | LVS_REPORT | LVS_SHOWSELALWAYS, rc, this, IDC_LIST_FILE) == FALSE)
+	if (pList->Create(WS_CHILD | LVS_REPORT | LVS_SHOWSELALWAYS | LVS_SHAREIMAGELISTS, rc, this, IDC_LIST_FILE) == FALSE)
 	{
 		delete pList;
 		m_bEnable_UpdateCurrentPathByClick = TRUE;
 		return FALSE;
 	}
-	pList->SetExtendedStyle(LVS_EX_FULLROWSELECT);
+	pList->SetExtendedStyle(LVS_EX_FULLROWSELECT | WS_EX_CLIENTEDGE);
 	pList->SetFont(&m_font);
 	//pList->EnableShellContextMenu();
 	pList->SetSortColumn(ti.iSortColumn, ti.bSortAscend);
-	HIMAGELIST* imageList = NULL;
-	if (iconsize != -1) SHGetImageList(iconsize, IID_IImageList, (void**)&imageList);
-	ListView_SetImageList(pList->GetSafeHwnd(), imageList, LVSIL_SMALL);
+	if (m_pSysImgList) ListView_SetImageList(pList->GetSafeHwnd(), m_pSysImgList, LVSIL_SMALL);
 	ti.pWnd = (CWnd*)pList;
-	if (ti.strPath.IsEmpty()) 
-	{
-		pList->DisplayFolder(ti.strPath);
-	}
-	else
-	{
-		pList->DisplayFolder(ti.strPath);
-	}
+	pList->DisplayFolder(ti.strPath);
 	m_bEnable_UpdateCurrentPathByClick = TRUE;
 	return TRUE;
 }
@@ -552,18 +544,18 @@ BOOL CDFilesDlg::OnCommand(WPARAM wParam, LPARAM lParam)
 	case IDM_CONFIG:
 		{
 			CDlgConfig dlg;
-			dlg.iconsize = iconsize;
-			dlg.fontsize = fontsize;
+			dlg.iconsize = m_iconsize;
+			dlg.fontsize = m_fontsize;
 			if (dlg.DoModal() == IDOK)
 			{
-				if (fontsize != dlg.fontsize)
+				if (m_fontsize != dlg.fontsize)
 				{
-					fontsize = dlg.fontsize;
+					m_fontsize = dlg.fontsize;
 					UpdateFontSize();
 				}
-				if (iconsize != dlg.iconsize)
+				if (m_iconsize != dlg.iconsize)
 				{
-					iconsize = dlg.iconsize;
+					m_iconsize = dlg.iconsize;
 					UpdateIconSize();
 				}
 			}
@@ -639,12 +631,15 @@ void CDFilesDlg::UpdateFontSize()
 
 void CDFilesDlg::UpdateIconSize()
 {
-	HIMAGELIST* imageList = NULL;
-	if (iconsize!=-1) SHGetImageList(iconsize, IID_IImageList, (void**)&imageList);
-	for (int i = 0; i < m_aTabInfo.GetSize(); i++)
+	m_pSysImgList = NULL;
+	SHGetImageList(m_iconsize, IID_IImageList, (void**)&m_pSysImgList);
+	if (m_pSysImgList)
 	{
-		CFileListCtrl* pList = (CFileListCtrl*)m_aTabInfo[i].pWnd;
-		ListView_SetImageList(pList->GetSafeHwnd(), imageList, LVSIL_SMALL);
+		for (int i = 0; i < m_aTabInfo.GetSize(); i++)
+		{
+			CFileListCtrl* pList = (CFileListCtrl*)m_aTabInfo[i].pWnd;
+			ListView_SetImageList(pList->GetSafeHwnd(), m_pSysImgList, LVSIL_SMALL);
+		}
 	}
 }
 
