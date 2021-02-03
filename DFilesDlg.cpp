@@ -96,7 +96,7 @@ void CDFilesDlg::InitFont()
 	CFont* pFont = GetFont();
 	LOGFONT lf;
 	pFont->GetLogFont(&lf);
-	lf.lfHeight = m_fontsize * 10;
+	lf.lfHeight = m_fontsize * 10 * -1;//-1 * MulDiv(m_fontsize, GetDeviceCaps(GetDC()->GetSafeHdc(), LOGPIXELSY), 72);
 	m_font.DeleteObject();
 	m_font.CreatePointFontIndirect(&lf);
 }
@@ -125,7 +125,7 @@ BOOL CDFilesDlg::OnInitDialog()
 			pSysMenu->AppendMenu(MF_STRING, IDM_ABOUTBOX, strAboutMenu);
 		}
 	}
-
+	InitFont();
 	// 이 대화 상자의 아이콘을 설정합니다.  응용 프로그램의 주 창이 대화 상자가 아닐 경우에는
 	//  프레임워크가 이 작업을 자동으로 수행합니다.
 	SetIcon(m_hIcon, TRUE);			// 큰 아이콘을 설정합니다.
@@ -134,7 +134,6 @@ BOOL CDFilesDlg::OnInitDialog()
 	InitINIPath();
 	UpdateIconSize();
 	INILoad(m_strINIPath);
-	InitFont();
 	m_tabPath.SetFont(&m_font);
 	m_editPath.SetFont(&m_font);
 	InitTabs();
@@ -252,9 +251,12 @@ void CDFilesDlg::InitTabs()
 
 void CDFilesDlg::ResizeDlgItems()
 {
-	int SU = m_fontsize * 2;
 	if (::IsWindow(m_tabPath.GetSafeHwnd()) && GetCurrentListCtrl()!=NULL)
 	{
+		LOGFONT lf;
+		m_font.GetLogFont(&lf);
+		int SU = abs(lf.lfHeight) * 1.5;//m_fontsize * 2;
+
 		CRect rc, rcWnd;
 		GetClientRect(rcWnd);
 		if (::IsWindow(m_editPath.GetSafeHwnd()))

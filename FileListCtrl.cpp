@@ -71,14 +71,6 @@ static CExtMap mapExt;
 
 
 //해당 파일의 아이콘 정보를 가져온다
-CString Get_Ext(CString strFile, BOOL bIsDirectory)
-{
-	CString strReturn;
-	int n = strFile.ReverseFind(_T('.'));
-	if (n == -1 || bIsDirectory == TRUE) return _T("");
-	strReturn = strFile.Right(strFile.GetLength() - n);
-	return strReturn;
-}
 int GetFileImageIndex(CString strPath)
 {
 	SHFILEINFO sfi;
@@ -93,7 +85,12 @@ int GetFileImageIndexFromMap(CString strPath, BOOL bIsDirectory)
 		return GetFileImageIndex(_T(""));
 		//return SI_FOLDER_OPEN;
 	}
-	CString strExt = Get_Ext(strPath, bIsDirectory);
+	CPath path = CPath(strPath);
+	CString strExt = path.GetExtension();
+	if (strExt.CompareNoCase(_T(".exe")) == 0
+		|| strExt.CompareNoCase(_T(".ico")) == 0
+		|| strExt.CompareNoCase(_T(".lnk")) == 0
+		) return GetFileImageIndex(strPath);
 	CExtMap::iterator it = mapExt.find(strExt);
 	if (it == mapExt.end())
 	{

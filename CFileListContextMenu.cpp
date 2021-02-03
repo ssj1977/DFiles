@@ -94,7 +94,7 @@ UINT CFileListContextMenu::ShowContextMenu(CWnd* pWnd, CPoint pt)
 	UINT idCommand = m_pMenu->TrackPopupMenu(TPM_RETURNCMD | TPM_LEFTALIGN, pt.x, pt.y, pWnd);
 
 	if (OldWndProc) // unsubclass
-		SetWindowLong(pWnd->m_hWnd, GWL_WNDPROC, (DWORD)OldWndProc);
+		SetWindowLong(pWnd->m_hWnd, GWLP_WNDPROC, (DWORD)OldWndProc);
 
 	if (idCommand >= MIN_ID && idCommand <= MAX_ID)	// see if returned idCommand belongs to shell menu entries
 	{
